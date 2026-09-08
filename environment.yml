@@ -1,0 +1,9 @@
+name: wafer-inspection
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      - fastapi>=0.115
+      - uvicorn[standard]>=0.30

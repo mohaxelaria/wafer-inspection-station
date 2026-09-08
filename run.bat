@@ -1,7 +1,9 @@
 @echo off
-REM Convenience launcher for Windows.
-if not exist .venv (
-    python -m venv .venv
-    .venv\Scripts\python -m pip install -q -r requirements.txt
+REM Launcher for Anaconda. Creates the conda env on first run.
+call conda activate wafer-inspection 2>nul
+if errorlevel 1 (
+    echo Creating conda environment "wafer-inspection"...
+    call conda env create -f environment.yml
+    call conda activate wafer-inspection
 )
-.venv\Scripts\python -m uvicorn backend.main:app --reload
+python -m uvicorn backend.main:app --reload

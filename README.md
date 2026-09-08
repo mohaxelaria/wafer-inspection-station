@@ -45,9 +45,17 @@ the simulator for a real tool.
 
 ## Run it
 
+With Anaconda (recommended - `run.bat` does all of this for you):
+
 ```bash
-python -m venv .venv
-.venv\Scripts\activate          # Windows;  source .venv/bin/activate on Linux/macOS
+conda env create -f environment.yml
+conda activate wafer-inspection
+uvicorn backend.main:app --reload
+```
+
+Or into an existing environment, with plain pip:
+
+```bash
 pip install -r requirements.txt
 uvicorn backend.main:app --reload
 ```
