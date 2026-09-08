@@ -1,7 +1,12 @@
-# Milestone 2 only. Install PyTorch first, matched to your CUDA version:
+# Milestone 2 only.
+#
+# Install PyTorch FIRST and separately, matched to your GPU:
 #   https://pytorch.org/get-started/locally/
-# e.g. pip install torch --index-url https://download.pytorch.org/whl/cu124
-torch>=2.2
+# RTX 50-series (Blackwell, sm_120) needs cu128 or newer:
+#   pip install torch --index-url https://download.pytorch.org/whl/cu128
+#
+# torch is deliberately NOT listed below, so this file can never replace your
+# CUDA build with the default CPU wheel from PyPI.
 numpy>=1.26
 pandas>=2.0
 kaggle>=1.6
