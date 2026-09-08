@@ -1,0 +1,497 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SP-Sim Inspection Station - Operator Console</title>
+<style>
+:root {
+  color-scheme: dark;
+  --page:      #0d0d0d;
+  --surface:   #1a1a19;
+  --ink:       #ffffff;
+  --ink-2:     #c3c2b7;
+  --muted:     #898781;
+  --grid:      #2c2c2a;
+  --baseline:  #383835;
+  --border:    rgba(255,255,255,0.10);
+  --series-1:  #3987e5;
+  --good:      #0ca30c;
+  --warning:   #fab219;
+  --serious:   #ec835a;
+  --critical:  #d03b3b;
+  --die-none:  #232321;
+  --die-pass:  #3d3d39;
+  --die-fail:  #d03b3b;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--page); color: var(--ink);
+  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+header {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  padding: 14px 20px; background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+h1 { font-size: 15px; margin: 0; font-weight: 650; letter-spacing: .2px; }
+.sub { color: var(--muted); font-size: 12px; }
+.spacer { flex: 1; }
+.pill {
+  padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+  border: 1px solid var(--border);
+}
+.pill.SCANNING { color: var(--good); }
+.pill.IDLE, .pill.LOADING, .pill.PAUSED { color: var(--ink-2); }
+.pill.FAULT { color: var(--critical); }
+.link { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); font-size: 12px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--critical); }
+.dot.on { background: var(--good); }
+
+main {
+  display: grid; gap: 16px; padding: 16px 20px;
+  grid-template-columns: minmax(320px, 1fr) minmax(320px, 1fr);
+}
+@media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 14px 16px;
+}
+.card > h2 {
+  font-size: 12px; text-transform: uppercase; letter-spacing: .6px;
+  color: var(--muted); margin: 0 0 12px; font-weight: 600;
+}
+.stack { display: flex; flex-direction: column; gap: 16px; }
+
+.tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+@media (max-width: 620px) { .tiles { grid-template-columns: repeat(2, 1fr); } }
+.tile-label { color: var(--muted); font-size: 11px; text-transform: uppercase;
+  letter-spacing: .5px; }
+.tile-value { font-size: 26px; font-weight: 640; line-height: 1.2; margin-top: 2px; }
+.tile-unit { font-size: 13px; color: var(--ink-2); font-weight: 500; }
+
+.controls { display: flex; gap: 8px; flex-wrap: wrap; }
+button {
+  font: inherit; font-weight: 600; color: var(--ink); cursor: pointer;
+  background: #262624; border: 1px solid var(--border);
+  border-radius: 7px; padding: 7px 13px;
+}
+button:hover:not(:disabled) { background: #30302d; background: #30302d; }
+button:disabled { opacity: .38; cursor: not-allowed; }
+button.primary { background: var(--series-1); border-color: transparent; color: #fff; }
+button.danger  { background: transparent; border-color: var(--critical); color: var(--critical); }
+
+.wafer-wrap { position: relative; display: flex; justify-content: center; }
+canvas { display: block; max-width: 100%; }
+.legend { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 12px;
+  font-size: 12px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.swatch { width: 10px; height: 10px; border-radius: 2px; }
+
+.tooltip {
+  position: absolute; pointer-events: none; z-index: 5;
+  background: #262624; border: 1px solid var(--border); border-radius: 6px;
+  padding: 6px 9px; font-size: 12px; white-space: nowrap;
+  box-shadow: 0 4px 14px rgba(0,0,0,.45);
+}
+
+.alarm { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0;
+  border-bottom: 1px solid var(--grid); }
+.alarm:last-child { border-bottom: 0; }
+.alarm .icon { font-weight: 700; font-size: 13px; }
+.alarm .code { font-weight: 640; font-size: 12px; letter-spacing: .3px; }
+.alarm .text { color: var(--ink-2); font-size: 12px; }
+.alarm .ts { color: var(--muted); font-size: 11px; margin-left: auto;
+  font-variant-numeric: tabular-nums; }
+.sev-warning  .icon, .sev-warning  .code { color: var(--warning); }
+.sev-serious  .icon, .sev-serious  .code { color: var(--serious); }
+.sev-critical .icon, .sev-critical .code { color: var(--critical); }
+.empty { color: var(--muted); font-size: 12px; padding: 6px 0; }
+
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th { text-align: left; font-size: 11px; text-transform: uppercase;
+  letter-spacing: .5px; color: var(--muted); font-weight: 600;
+  padding: 6px 8px; border-bottom: 1px solid var(--baseline); }
+td { padding: 7px 8px; border-bottom: 1px solid var(--grid); font-size: 13px; }
+td.num, th.num { text-align: right; }
+.ok  { color: var(--good); }
+.bad { color: var(--critical); }
+.full { grid-column: 1 / -1; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div>
+      <h1>SP-Sim Optical Inspection Station</h1>
+      <div class="sub">Simulated tool &middot; detector: {{ detector }}</div>
+    </div>
+    <div class="pill" :class="telemetry.state">{{ telemetry.state }}</div>
+    <div class="sub" v-if="telemetry.lot_id">
+      Lot <strong>{{ telemetry.lot_id }}</strong> &middot;
+      slot {{ telemetry.slot }} / {{ telemetry.slots_total }}
+    </div>
+    <div class="spacer"></div>
+    <div class="link"><span class="dot" :class="{ on: connected }"></span>
+      {{ connected ? 'Host link up' : 'Disconnected' }}</div>
+  </header>
+
+  <main>
+    <!-- ---------------------------------------------------------- wafer map -->
+    <section class="card">
+      <h2>Wafer map &middot; slot {{ telemetry.slot || '-' }}</h2>
+      <div class="wafer-wrap">
+        <canvas ref="wafer" width="1040" height="1040"
+                style="width:520px;height:520px"
+                @mousemove="onWaferHover" @mouseleave="hover = null"></canvas>
+        <div class="tooltip" v-if="hover"
+             :style="{ left: hover.px + 14 + 'px', top: hover.py + 'px' }">
+          Die R{{ hover.row }} C{{ hover.col }} &middot;
+          <strong :class="hover.failed ? 'bad' : 'ok'">
+            {{ hover.failed ? 'FAIL' : 'PASS' }}</strong>
+        </div>
+      </div>
+      <div class="legend">
+        <span><i class="swatch" style="background:var(--die-none)"></i> Not inspected</span>
+        <span><i class="swatch" style="background:var(--die-pass)"></i> Pass</span>
+        <span><i class="swatch" style="background:var(--die-fail)"></i> Fail</span>
+        <span style="margin-left:auto">
+          {{ telemetry.dies_done }} / {{ telemetry.dies_total }} dies</span>
+      </div>
+    </section>
+
+    <div class="stack">
+      <!-- ------------------------------------------------------------ tiles -->
+      <section class="card">
+        <h2>Current wafer</h2>
+        <div class="tiles">
+          <div>
+            <div class="tile-label">Yield</div>
+            <div class="tile-value">{{ yieldPct }}<span class="tile-unit">%</span></div>
+          </div>
+          <div>
+            <div class="tile-label">Failed dies</div>
+            <div class="tile-value">{{ telemetry.dies_failed }}</div>
+          </div>
+          <div>
+            <div class="tile-label">Throughput</div>
+            <div class="tile-value">{{ kdph }}<span class="tile-unit">k/h</span></div>
+          </div>
+          <div>
+            <div class="tile-label">Lamp</div>
+            <div class="tile-value">{{ telemetry.lamp_pct.toFixed(0) }}<span class="tile-unit">%</span></div>
+          </div>
+        </div>
+        <div class="controls" style="margin-top:16px">
+          <button class="primary" @click="cmd('start')"
+                  :disabled="telemetry.state === 'FAULT'">Start</button>
+          <button @click="cmd('pause')"
+                  :disabled="telemetry.state !== 'SCANNING'">Pause</button>
+          <button @click="cmd('load')"
+                  :disabled="telemetry.state === 'SCANNING'">Load lot</button>
+          <button class="danger" @click="cmd('abort')">Abort</button>
+          <button @click="cmd('clear')" :disabled="!activeAlarms.length">
+            Clear alarms</button>
+        </div>
+      </section>
+
+      <!-- ------------------------------------------------------------ chart -->
+      <section class="card">
+        <h2>Throughput &middot; dies per hour, last 60 s</h2>
+        <div class="wafer-wrap" style="justify-content:stretch">
+          <canvas ref="chart" width="960" height="340"
+                  style="width:100%;height:170px"
+                  @mousemove="onChartHover" @mouseleave="chartHover = null"></canvas>
+          <div class="tooltip" v-if="chartHover"
+               :style="{ left: chartHover.px + 12 + 'px', top: '6px' }">
+            {{ chartHover.value.toLocaleString() }} dies/h
+            <span style="color:var(--muted)"> &middot; -{{ chartHover.ago }}s</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ----------------------------------------------------------- alarms -->
+      <section class="card">
+        <h2>Alarms</h2>
+        <div v-if="!alarms.length" class="empty">No alarms.</div>
+        <div v-for="a in alarms" :key="a.alarm_id" class="alarm" :class="'sev-' + a.severity">
+          <span class="icon">{{ a.severity === 'critical' ? '✖'
+            : a.severity === 'serious' ? '▲' : '⚠' }}</span>
+          <div>
+            <div class="code">{{ a.code }} <span style="color:var(--muted);font-weight:500">
+              ({{ a.severity }})</span></div>
+            <div class="text">{{ a.text }}</div>
+          </div>
+          <span class="ts">{{ clock(a.ts) }}</span>
+        </div>
+      </section>
+    </div>
+
+    <!-- --------------------------------------------------------- history -->
+    <section class="card full">
+      <h2>Inspected wafers &middot; detector accuracy
+        {{ accuracy === null ? '-' : (accuracy * 100).toFixed(0) + '%' }}
+        over {{ accWafers }} wafers</h2>
+      <div v-if="!history.length" class="empty">
+        No completed wafers yet. Press Start.</div>
+      <table v-else>
+        <thead><tr>
+          <th>Lot</th><th class="num">Slot</th><th class="num">Yield</th>
+          <th class="num">Failed</th><th>True pattern</th>
+          <th>Detected</th><th class="num">Conf.</th><th>Match</th>
+        </tr></thead>
+        <tbody>
+          <tr v-for="w in history" :key="w.wafer_id">
+            <td>{{ w.lot_id }}</td>
+            <td class="num">{{ w.slot }}</td>
+            <td class="num">{{ w.yield_pct.toFixed(1) }}%</td>
+            <td class="num">{{ w.dies_failed }}</td>
+            <td>{{ w.true_pattern }}</td>
+            <td>{{ w.pred_pattern }}</td>
+            <td class="num">{{ w.confidence.toFixed(2) }}</td>
+            <td :class="w.true_pattern === w.pred_pattern ? 'ok' : 'bad'">
+              {{ w.true_pattern === w.pred_pattern ? '✓ hit' : '✗ miss' }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/vue/3.5.13/vue.global.prod.min.js"></script>
+<script>
+const { createApp, ref, reactive, computed, onMounted, nextTick } = Vue;
+
+createApp({
+  setup() {
+    const blank = {
+      state: 'IDLE', lot_id: null, slot: 0, slots_total: 0,
+      stage_x: 0, stage_y: 0, lamp_pct: 100, chamber_c: 22, vacuum_kpa: 0,
+      dies_done: 0, dies_total: 0, dies_failed: 0, throughput_dph: 0, uptime_s: 0
+    };
+    const telemetry = reactive({ ...blank });
+    const alarms    = ref([]);
+    const history   = ref([]);
+    const connected = ref(false);
+    const detector  = ref('heuristic-v1');
+    const accuracy  = ref(null);
+    const accWafers = ref(0);
+    const hover     = ref(null);
+    const chartHover= ref(null);
+
+    const wafer = ref(null);   // canvas refs
+    const chart = ref(null);
+
+    let grid = 26;
+    let dies = new Map();          // "row,col" -> failed
+    let series = [];               // { t, v } throughput samples
+    let dirty = true;
+
+    const yieldPct = computed(() => {
+      const d = telemetry.dies_done;
+      if (!d) return '0.0';
+      return (100 * (d - telemetry.dies_failed) / d).toFixed(1);
+    });
+    const kdph = computed(() => (telemetry.throughput_dph / 1000).toFixed(1));
+    const activeAlarms = computed(() => alarms.value.filter(a => a.active));
+    const clock = ts => new Date(ts * 1000).toLocaleTimeString();
+
+    // ------------------------------------------------------------- transport
+    async function cmd(name) {
+      await fetch('/api/command/' + name, { method: 'POST' });
+      if (name === 'abort' || name === 'load') { dies.clear(); dirty = true; }
+    }
+
+    async function refreshHistory() {
+      const [rows, acc] = await Promise.all([
+        fetch('/api/wafers?limit=25').then(r => r.json()),
+        fetch('/api/metrics/detector').then(r => r.json())
+      ]);
+      history.value = rows;
+      accuracy.value = acc.wafers ? acc.accuracy : null;
+      accWafers.value = acc.wafers;
+    }
+
+    function applySnapshot(s) {
+      Object.assign(telemetry, s.telemetry);
+      alarms.value = (s.alarms || []).slice().reverse();
+      dies.clear();
+      if (s.wafer) {
+        grid = s.wafer.grid;
+        for (const d of s.wafer.dies) dies.set(d.row + ',' + d.col, d.failed);
+      }
+      dirty = true;
+    }
+
+    function connect() {
+      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+      const ws = new WebSocket(proto + '://' + location.host + '/ws');
+      ws.onopen  = () => { connected.value = true; };
+      ws.onclose = () => { connected.value = false; setTimeout(connect, 1500); };
+      ws.onmessage = ev => {
+        const m = JSON.parse(ev.data);
+        switch (m.type) {
+          case 'snapshot': applySnapshot(m); break;
+          case 'telemetry': {
+            Object.assign(telemetry, m);
+            const now = Date.now() / 1000;
+            series.push({ t: now, v: m.throughput_dph });
+            series = series.filter(p => now - p.t <= 60);
+            dirty = true;
+            break;
+          }
+          case 'wafer_started':
+            grid = m.grid; dies.clear(); dirty = true; break;
+          case 'dies':
+            for (const d of m.dies) dies.set(d.row + ',' + d.col, d.failed);
+            dirty = true; break;
+          case 'wafer_done': refreshHistory(); break;
+          case 'alarm': alarms.value = [m, ...alarms.value].slice(0, 20); break;
+          case 'alarms_cleared':
+            alarms.value = alarms.value.map(a => ({ ...a, active: false })); break;
+        }
+      };
+    }
+
+    // ----------------------------------------------------------- wafer canvas
+    function cellGeometry(cv) {
+      const pad = 24, size = cv.width - pad * 2;
+      return { pad, cell: size / grid };
+    }
+
+    function drawWafer() {
+      const cv = wafer.value; if (!cv) return;
+      const g = cv.getContext('2d');
+      const css = getComputedStyle(document.documentElement);
+      const { pad, cell } = cellGeometry(cv);
+      g.clearRect(0, 0, cv.width, cv.height);
+
+      // wafer outline + notch
+      const cx = cv.width / 2, cy = cv.height / 2, R = (cv.width - pad * 2) / 2;
+      g.strokeStyle = css.getPropertyValue('--baseline'); g.lineWidth = 3;
+      g.beginPath(); g.arc(cx, cy, R + 6, 0.09 * Math.PI, 2.91 * Math.PI); g.stroke();
+
+      const none = css.getPropertyValue('--die-none');
+      const pass = css.getPropertyValue('--die-pass');
+      const fail = css.getPropertyValue('--die-fail');
+      const half = (grid - 1) / 2;
+      const gap = 2;   // 2px surface gap between cells
+
+      for (let r = 0; r < grid; r++) {
+        for (let c = 0; c < grid; c++) {
+          const nx = (c - half) / half, ny = (r - half) / half;
+          if (Math.hypot(nx, ny) > 1.0) continue;
+          const k = dies.get(r + ',' + c);
+          g.fillStyle = k === undefined ? none : (k ? fail : pass);
+          g.fillRect(pad + c * cell + gap / 2, pad + r * cell + gap / 2,
+                     cell - gap, cell - gap);
+        }
+      }
+
+      // live stage position
+      if (telemetry.state === 'SCANNING') {
+        g.strokeStyle = css.getPropertyValue('--series-1'); g.lineWidth = 3;
+        const sx = cx + telemetry.stage_x * R, sy = cy + telemetry.stage_y * R;
+        g.beginPath(); g.arc(sx, sy, cell * 0.85, 0, Math.PI * 2); g.stroke();
+      }
+    }
+
+    function onWaferHover(ev) {
+      const cv = wafer.value; if (!cv) return;
+      const rect = cv.getBoundingClientRect();
+      const scale = cv.width / rect.width;
+      const { pad, cell } = cellGeometry(cv);
+      const x = (ev.clientX - rect.left) * scale, y = (ev.clientY - rect.top) * scale;
+      const c = Math.floor((x - pad) / cell), r = Math.floor((y - pad) / cell);
+      const k = dies.get(r + ',' + c);
+      hover.value = k === undefined ? null : {
+        row: r, col: c, failed: k,
+        px: ev.clientX - rect.left, py: ev.clientY - rect.top
+      };
+    }
+
+    // ----------------------------------------------------------- chart canvas
+    function chartGeometry(cv) {
+      return { L: 58, R: 12, T: 14, B: 26,
+               w: cv.width - 58 - 12, h: cv.height - 14 - 26 };
+    }
+
+    function drawChart() {
+      const cv = chart.value; if (!cv) return;
+      const g = cv.getContext('2d');
+      const css = getComputedStyle(document.documentElement);
+      const { L, T, w, h } = chartGeometry(cv);
+      g.clearRect(0, 0, cv.width, cv.height);
+
+      const peak = Math.max(1000, ...series.map(p => p.v));
+      const top = Math.ceil(peak / 20000) * 20000 || 20000;
+
+      g.strokeStyle = css.getPropertyValue('--grid'); g.lineWidth = 1;
+      g.fillStyle = css.getPropertyValue('--muted');
+      g.font = '20px system-ui, sans-serif'; g.textAlign = 'right';
+      for (let i = 0; i <= 4; i++) {
+        const y = T + h - (h * i / 4);
+        g.beginPath(); g.moveTo(L, y); g.lineTo(L + w, y); g.stroke();
+        g.fillText(((top * i / 4) / 1000).toFixed(0) + 'k', L - 10, y + 7);
+      }
+      g.strokeStyle = css.getPropertyValue('--baseline');
+      g.beginPath(); g.moveTo(L, T + h); g.lineTo(L + w, T + h); g.stroke();
+
+      if (series.length < 2) return;
+      const now = Date.now() / 1000;
+      const px = p => L + w * (1 - Math.min((now - p.t) / 60, 1));
+      const py = p => T + h - h * Math.min(p.v / top, 1);
+
+      g.strokeStyle = css.getPropertyValue('--series-1');
+      g.lineWidth = 4; g.lineJoin = 'round'; g.lineCap = 'round';
+      g.beginPath();
+      series.forEach((p, i) => i ? g.lineTo(px(p), py(p)) : g.moveTo(px(p), py(p)));
+      g.stroke();
+
+      const last = series[series.length - 1];
+      g.fillStyle = css.getPropertyValue('--series-1');
+      g.beginPath(); g.arc(px(last), py(last), 7, 0, Math.PI * 2); g.fill();
+    }
+
+    function onChartHover(ev) {
+      const cv = chart.value; if (!cv || series.length < 2) return;
+      const rect = cv.getBoundingClientRect();
+      const scale = cv.width / rect.width;
+      const { L, w } = chartGeometry(cv);
+      const x = (ev.clientX - rect.left) * scale;
+      const frac = Math.min(Math.max((x - L) / w, 0), 1);
+      const now = Date.now() / 1000;
+      const target = now - (1 - frac) * 60;
+      let best = series[0];
+      for (const p of series)
+        if (Math.abs(p.t - target) < Math.abs(best.t - target)) best = p;
+      chartHover.value = {
+        px: ev.clientX - rect.left,
+        value: Math.round(best.v),
+        ago: Math.round(now - best.t)
+      };
+    }
+
+    function frame() {
+      if (dirty) { drawWafer(); drawChart(); dirty = false; }
+      requestAnimationFrame(frame);
+    }
+
+    onMounted(async () => {
+      await nextTick();
+      const h = await fetch('/api/health').then(r => r.json());
+      detector.value = h.detector;
+      await refreshHistory();
+      connect();
+      frame();
+      setInterval(() => { dirty = true; }, 500);   // keep the time axis moving
+    });
+
+    return { telemetry, alarms, history, connected, detector, accuracy,
+             accWafers, hover, chartHover, wafer, chart, yieldPct, kdph,
+             activeAlarms, cmd, clock, onWaferHover, onChartHover };
+  }
+}).mount('#app');
+</script>
+</body>
+</html>

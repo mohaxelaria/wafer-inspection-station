@@ -1,0 +1,112 @@
+# Wafer Inspection Station
+
+A working simulation of a semiconductor **optical inspection tool** and the
+operator software that drives it: machine control, 10 Hz telemetry, live wafer
+mapping, automatic defect-pattern classification, alarms and result storage.
+
+The point of the project is the part that is hard to show on a CV: not a model
+in a notebook, but a model inside a running machine, with an operator screen in
+front of it and a database behind it.
+
+![status](https://img.shields.io/badge/milestone-1%20of%204-blue)
+
+## What it does
+
+- **Simulated tool** - a cassette of wafers, a stage that walks every die,
+  illumination that degrades, and faults (stage timeout, wafer misalignment)
+  that put the machine into a real fault state and need operator action.
+- **Operator console (HMI)** - live wafer map filling in die by die, stage
+  position, yield and throughput tiles, a throughput chart, an alarm panel with
+  severity, and machine controls.
+- **Automatic Defect Classification** - every finished wafer is classified into
+  a WM-811K pattern class (`none`, `center`, `donut`, `edge_ring`, `scratch`,
+  `loc`) and scored against the simulator's ground truth.
+- **Result store** - lots, wafers, yields, predictions and alarms in SQL, with a
+  running detector-accuracy metric.
+
+## Architecture
+
+```
+  machine.py            main.py                     index.html
+ +------------+      +-------------------+        +----------------+
+ | simulated  | ---> | FastAPI           | --WS-> | Vue 3 operator |
+ | inspection |      |  - control API    |        | console        |
+ | tool 10Hz  | <--- |  - event fan-out  | <-REST-|                |
+ +------------+      +---------+---------+        +----------------+
+       |                       |
+       v                       v
+  detector.py              db.py (SQL)
+  ADC classifier           lots / wafers / alarms
+```
+
+Every layer talks through a narrow interface, so each one can be replaced
+independently: the heuristic detector for a trained CNN, SQLite for PostgreSQL,
+the simulator for a real tool.
+
+## Run it
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate          # Windows;  source .venv/bin/activate on Linux/macOS
+pip install -r requirements.txt
+uvicorn backend.main:app --reload
+```
+
+Open <http://127.0.0.1:8000>, press **Start**.
+
+If the project sits on a network or shared drive where SQLite cannot lock
+files, point the database somewhere local: `set WIS_DB_PATH=C:\temp\inspection.db`.
+
+## Score the detector
+
+```bash
+python -m scripts.bench_detector 100
+```
+
+```
+detector: heuristic-v1   wafers: 600   accuracy: 97.7%
+
+                  none     center      donut  edge_ring    scratch        loc
+none               100          0          0          0          0          0   recall 100%
+center               0        100          0          0          0          0   recall 100%
+donut                0          0        100          0          0          0   recall 100%
+edge_ring            0          0          0        100          0          0   recall 100%
+scratch              3          0          0          0         97          0   recall  97%
+loc                  3          2          0          0          6         89   recall  89%
+```
+
+That number is honest but flattering: the simulator draws clean parametric
+patterns, and hand-written radial features are very good at clean parametric
+patterns. Real wafer maps are noisy, mixed-mode and unbalanced, which is
+exactly where the heuristic falls over and a CNN earns its place - measuring
+that gap is milestone 2.
+
+## Roadmap
+
+| Milestone | Content |
+|---|---|
+| **1 - done** | Simulator, FastAPI + WebSocket, Vue console, SQLite store, heuristic ADC |
+| 2 | CNN trained on the real WM-811K dataset behind the same `Detector` interface; heuristic vs CNN on real data |
+| 3 | PostgreSQL + Redis, Docker Compose, one-command startup |
+| 4 | SECS/GEM equipment interface (SEMI E5/E30) and SPC control charts with Western Electric rules |
+
+## Layout
+
+```
+backend/
+  wafer.py      wafer geometry, WM-811K-style defect pattern generation
+  machine.py    the simulated tool: states, telemetry, faults, scan loop
+  detector.py   Detector interface + heuristic baseline classifier
+  db.py         SQL result store
+  main.py       FastAPI app: control API, WebSocket fan-out, static hosting
+frontend/
+  index.html    Vue 3 operator console (canvas wafer map + charts)
+scripts/
+  bench_detector.py   offline accuracy + confusion matrix
+```
+
+## Notes
+
+Wafer coordinates are normalised to a unit circle, dies are scanned in
+serpentine order like a real stage, and the die grid, scan rate and lot size are
+all parameters - so the same code drives a 26x26 demo wafer or a realistic map.
