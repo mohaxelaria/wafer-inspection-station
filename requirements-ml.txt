@@ -1,0 +1,7 @@
+# Milestone 2 only. Install PyTorch first, matched to your CUDA version:
+#   https://pytorch.org/get-started/locally/
+# e.g. pip install torch --index-url https://download.pytorch.org/whl/cu124
+torch>=2.2
+numpy>=1.26
+pandas>=2.0
+kaggle>=1.6

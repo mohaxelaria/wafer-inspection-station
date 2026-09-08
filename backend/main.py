@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .db import Store
-from .detector import HeuristicDetector
+from .detector_cnn import load_detector
 from .machine import InspectionMachine
 
 FRONTEND = Path(__file__).resolve().parent.parent / "frontend"
@@ -33,7 +33,7 @@ def _emit(evt: dict) -> None:
         pass                       # telemetry is disposable; results are not
 
 
-machine = InspectionMachine(detector=HeuristicDetector(), emit=_emit)
+machine = InspectionMachine(detector=load_detector(), emit=_emit)
 
 
 async def _broadcaster() -> None:

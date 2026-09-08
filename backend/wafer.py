@@ -137,3 +137,16 @@ def build_wafer(lot_id: str, slot: int, grid: int = 26,
         dies=dies,
         true_pattern=pattern,
     )
+
+
+def wafer_to_grid(wafer: Wafer) -> list[list[int]]:
+    """Encode a wafer the way WM-811K does: 0 = no die, 1 = pass, 2 = fail.
+
+    This is the bridge between the simulator and any model trained on the real
+    dataset - both sides speak the same grid format.
+    """
+    grid = [[0] * wafer.grid for _ in range(wafer.grid)]
+    for die in wafer.dies:
+        if die.inspected:
+            grid[die.row][die.col] = 2 if die.failed else 1
+    return grid

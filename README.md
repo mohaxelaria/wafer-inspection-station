@@ -89,12 +89,34 @@ patterns. Real wafer maps are noisy, mixed-mode and unbalanced, which is
 exactly where the heuristic falls over and a CNN earns its place - measuring
 that gap is milestone 2.
 
+## Milestone 2 - train the real detector
+
+The heuristic never sees real data. To replace it:
+
+```bash
+pip install -r requirements-ml.txt          # install PyTorch from pytorch.org first
+kaggle datasets download -d qingyi/wm811k-wafer-map -p data --unzip
+python -m ml.data --size 32 --max-per-class 20000   # build the cached tensors
+python -m ml.train --epochs 20                       # writes ml/checkpoints/wafer_cnn.pt
+python -m ml.evaluate                                # heuristic vs CNN -> ml/RESULTS.md
+```
+
+Restart the server and the console header switches from `heuristic-v1` to the
+CNN automatically - `backend/detector_cnn.py` loads the checkpoint if it
+exists and falls back to the heuristic if it does not.
+
+Two things about WM-811K that shape the code: only ~173k of the 811k wafers
+carry a failure label, and about 85% of those are `none`. The cache subsamples
+the majority class and the training loss is class-weighted; without both, the
+model reaches high accuracy by predicting `none` for everything, which is why
+`ml/evaluate.py` reports **macro F1** and not only accuracy.
+
 ## Roadmap
 
 | Milestone | Content |
 |---|---|
 | **1 - done** | Simulator, FastAPI + WebSocket, Vue console, SQLite store, heuristic ADC |
-| 2 | CNN trained on the real WM-811K dataset behind the same `Detector` interface; heuristic vs CNN on real data |
+| **2 - in progress** | CNN trained on the real WM-811K dataset behind the same `Detector` interface; heuristic vs CNN on real data |
 | 3 | PostgreSQL + Redis, Docker Compose, one-command startup |
 | 4 | SECS/GEM equipment interface (SEMI E5/E30) and SPC control charts with Western Electric rules |
 
@@ -110,7 +132,14 @@ backend/
 frontend/
   index.html    Vue 3 operator console (canvas wafer map + charts)
 scripts/
-  bench_detector.py   offline accuracy + confusion matrix
+  bench_detector.py   offline accuracy + confusion matrix on simulated wafers
+ml/
+  labels.py     shared 9-class vocabulary (WM-811K names -> snake_case)
+  data.py       WM-811K loader, resize, class balancing, stratified split
+  model.py      small CNN (~290k parameters)
+  train.py      class-weighted training loop, checkpointing, per-class F1
+  compat.py     real wafer map -> Wafer object, so the heuristic can be scored on it
+  evaluate.py   head-to-head heuristic vs CNN -> RESULTS.md
 ```
 
 ## Notes
