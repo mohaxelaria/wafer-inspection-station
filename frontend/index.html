@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SP-Sim Inspection Station - Operator Console</title>
+<link rel="icon" href="data:,">
 <style>
 :root {
   color-scheme: dark;
@@ -231,7 +232,7 @@ td.num, th.num { text-align: right; }
     <section class="card full">
       <h2>Inspected wafers &middot; detector accuracy
         {{ accuracy === null ? '-' : (accuracy * 100).toFixed(0) + '%' }}
-        over {{ accWafers }} wafers</h2>
+        over {{ accWafers }} wafer{{ accWafers === 1 ? '' : 's' }}</h2>
       <div v-if="!history.length" class="empty">
         No completed wafers yet. Press Start.</div>
       <table v-else>
@@ -258,7 +259,9 @@ td.num, th.num { text-align: right; }
   </main>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/vue/3.5.13/vue.global.prod.min.js"></script>
+<!-- Vue is vendored, not pulled from a CDN: fab tools sit on isolated
+     networks with no internet access. -->
+<script src="./vendor/vue.global.prod.js"></script>
 <script>
 const { createApp, ref, reactive, computed, onMounted, nextTick } = Vue;
 
