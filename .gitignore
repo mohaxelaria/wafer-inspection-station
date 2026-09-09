@@ -2,6 +2,15 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
-data/*.db
 .DS_Store
 node_modules/
+
+# Datasets and generated caches - never commit these (LSWMD.pkl alone is 2 GB).
+data/
+*.pkl
+*.npz
+*.db
+*.db-journal
+
+# The trained checkpoint IS committed (about 1 MB) so the repo runs out of the box.
+!ml/checkpoints/wafer_cnn.pt

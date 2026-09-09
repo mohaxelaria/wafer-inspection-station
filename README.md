@@ -8,7 +8,7 @@ The point of the project is the part that is hard to show on a CV: not a model
 in a notebook, but a model inside a running machine, with an operator screen in
 front of it and a database behind it.
 
-![status](https://img.shields.io/badge/milestone-1%20of%204-blue)
+![status](https://img.shields.io/badge/milestone-2%20of%204-blue) ![macro F1](https://img.shields.io/badge/WM--811K%20macro%20F1-0.873-brightgreen)
 
 ## What it does
 
@@ -111,12 +111,49 @@ the majority class and the training loss is class-weighted; without both, the
 model reaches high accuracy by predicting `none` for everything, which is why
 `ml/evaluate.py` reports **macro F1** and not only accuracy.
 
+## Results: what the model actually bought
+
+Both detectors scored on the same held-out split of **6,834 real wafer maps**,
+with identical input. Full per-class tables in [ml/RESULTS.md](ml/RESULTS.md).
+
+| detector | accuracy | macro F1 |
+|---|---:|---:|
+| Heuristic, on **simulated** wafers | 0.977 | - |
+| Heuristic, on **real** WM-811K | 0.476 | 0.235 |
+| CNN trained on WM-811K | **0.923** | **0.873** |
+
+The first two rows are the same code. Hand-written radial features score 97.7%
+on the clean parametric patterns my simulator draws and 47.6% on real wafers -
+that collapse is the honest reason to train a model, and it is why the
+simulator keeps ground truth in the first place.
+
+Where the heuristic fails is specific, not general:
+
+- `edge_loc`, `random`, `near_full` - **F1 = 0.00**. It has no rule for them;
+  a rule-based system can only find shapes somebody wrote a rule for.
+- `center` - recall **0.04**. The rule wants most failures inside r < 0.35.
+  Real centre defects are larger, noisier and off-centre, so the threshold
+  almost never fires.
+- `edge_ring` - recall 0.96 but F1 only 0.57: it labels far too many wafers
+  `edge_ring`, because real wafers have failing dies near the edge for reasons
+  that have nothing to do with a ring defect.
+
+The CNN's own weak spot is `scratch` (F1 0.70) and, behind it, `loc` (0.80).
+Both are consistent with the preprocessing rather than the model: a scratch is
+often one or two dies wide, and nearest-neighbour downsampling to 32x32 breaks
+a thin line into disconnected dots. Raising the input resolution is the next
+experiment, not a bigger network.
+
+**Metric note.** 66% of the labelled wafers in this dataset are `none`, so a
+model that predicts `none` for everything already scores about 0.66 accuracy.
+Every number here is reported with macro F1 beside it for that reason.
+
 ## Roadmap
 
 | Milestone | Content |
 |---|---|
-| **1 - done** | Simulator, FastAPI + WebSocket, Vue console, SQLite store, heuristic ADC |
-| **2 - in progress** | CNN trained on the real WM-811K dataset behind the same `Detector` interface; heuristic vs CNN on real data |
+| 1 - done | Simulator, FastAPI + WebSocket, Vue console, SQLite store, heuristic ADC |
+| **2 - done** | CNN trained on the real WM-811K dataset behind the same `Detector` interface; heuristic vs CNN on real data |
 | 3 | PostgreSQL + Redis, Docker Compose, one-command startup |
 | 4 | SECS/GEM equipment interface (SEMI E5/E30) and SPC control charts with Western Electric rules |
 
