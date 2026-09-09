@@ -20,7 +20,13 @@ from .data import load_cache
 from .labels import CLASSES
 from .model import WaferCNN
 
-CKPT = Path(__file__).resolve().parent / "checkpoints" / "wafer_cnn.pt"
+CKPT_DIR = Path(__file__).resolve().parent / "checkpoints"
+
+
+def ckpt_path(size: int) -> Path:
+    """One checkpoint per input resolution, so a 64x64 run never overwrites
+    the 32x32 result it is being compared against."""
+    return CKPT_DIR / f"wafer_cnn_{size}.pt"
 
 
 def augment(x: torch.Tensor) -> torch.Tensor:
@@ -65,6 +71,7 @@ def main() -> None:
     ap.add_argument("--batch", type=int, default=256)
     ap.add_argument("--lr", type=float, default=3e-3)
     args = ap.parse_args()
+    ckpt = ckpt_path(args.size)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"device: {device}"
@@ -117,23 +124,23 @@ def main() -> None:
         flag = ""
         if f1 > best:
             best = f1
-            CKPT.parent.mkdir(parents=True, exist_ok=True)
+            ckpt.parent.mkdir(parents=True, exist_ok=True)
             torch.save({"state_dict": model.state_dict(),
                         "classes": CLASSES, "size": args.size,
-                        "val_macro_f1": f1, "val_acc": acc}, CKPT)
+                        "val_macro_f1": f1, "val_acc": acc}, ckpt)
             flag = "  <- saved"
         print(f"epoch {epoch:>2}/{args.epochs}  "
               f"loss {running / len(splits['train']):.4f}  "
               f"val acc {acc:.3f}  val macroF1 {f1:.3f}  "
               f"{time.time() - t0:.0f}s{flag}")
 
-    model.load_state_dict(torch.load(CKPT, map_location=device)["state_dict"])
+    model.load_state_dict(torch.load(ckpt, map_location=device)["state_dict"])
     acc, conf = evaluate(model, test_dl, device)
     f1, per_class = macro_f1(conf)
     print(f"\nTEST  accuracy {acc:.3f}   macro F1 {f1:.3f}\n")
     for name, score, n in zip(CLASSES, per_class, conf.sum(1)):
         print(f"  {name:<10} F1 {score:.3f}   n={n}")
-    print(f"\ncheckpoint: {CKPT}")
+    print(f"\ncheckpoint: {ckpt}")
 
 
 if __name__ == "__main__":

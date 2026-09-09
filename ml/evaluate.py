@@ -1,6 +1,7 @@
 """Head-to-head: heuristic vs CNN on the same real WM-811K test split.
 
-    python -m ml.evaluate
+    python -m ml.evaluate            # 32x32 input
+    python -m ml.evaluate --size 64  # after training at 64x64
 
 Writes ml/RESULTS.md. This comparison is the point of milestone 2: the
 heuristic looks excellent on clean simulated wafers and much less excellent on
@@ -8,6 +9,7 @@ real ones, which is the honest argument for training a model.
 """
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 
 import numpy as np
@@ -17,7 +19,7 @@ from .compat import wafer_from_grid
 from .data import load_cache
 from .labels import CLASSES
 
-OUT = Path(__file__).resolve().parent / "RESULTS.md"
+OUT_DIR = Path(__file__).resolve().parent
 
 
 def grids_from_tensor(X: np.ndarray) -> np.ndarray:
@@ -49,19 +51,21 @@ def run_heuristic(grids: np.ndarray) -> np.ndarray:
     return out
 
 
-def run_cnn(X: np.ndarray):
+def run_cnn(X: np.ndarray, size: int):
     try:
         import torch
-        from backend.detector_cnn import CKPT
+        from .train import ckpt_path
         from .model import WaferCNN
     except Exception as exc:
         print(f"(skipping CNN: {exc})")
         return None
-    if not CKPT.exists():
-        print("(skipping CNN: no checkpoint - run python -m ml.train first)")
+    ckpt = ckpt_path(size)
+    if not ckpt.exists():
+        print(f"(skipping CNN: {ckpt.name} not found - "
+              f"run python -m ml.train --size {size} first)")
         return None
 
-    blob = torch.load(CKPT, map_location="cpu", weights_only=False)
+    blob = torch.load(ckpt, map_location="cpu", weights_only=False)
     model = WaferCNN(n_classes=len(blob["classes"]))
     model.load_state_dict(blob["state_dict"])
     model.eval()
@@ -91,29 +95,37 @@ def table(name: str, acc: float, f1: float, conf: np.ndarray) -> str:
 
 
 def main() -> None:
-    X, y, splits = load_cache()
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--size", type=int, default=32,
+                    help="input resolution of the cache and checkpoint to score")
+    args = ap.parse_args()
+
+    X, y, splits = load_cache(args.size)
     test = splits["test"]
     Xt, yt = X[test], y[test]
     grids = grids_from_tensor(Xt)
-    print(f"test wafers: {len(yt):,}")
+    print(f"test wafers: {len(yt):,}   input {args.size}x{args.size}")
 
     sections = []
     h_acc, h_f1, h_conf = score(yt, run_heuristic(grids))
     print(f"heuristic  accuracy {h_acc:.3f}  macro F1 {h_f1:.3f}")
     sections.append(table("Heuristic (hand-written features)", h_acc, h_f1, h_conf))
 
-    cnn_pred = run_cnn(Xt)
+    cnn_pred = run_cnn(Xt, args.size)
     if cnn_pred is not None:
         c_acc, c_f1, c_conf = score(yt, cnn_pred)
         print(f"CNN        accuracy {c_acc:.3f}  macro F1 {c_f1:.3f}")
-        sections.append(table("CNN trained on WM-811K", c_acc, c_f1, c_conf))
+        sections.append(table(f"CNN trained on WM-811K ({args.size}x{args.size} input)",
+                              c_acc, c_f1, c_conf))
 
-    OUT.write_text(
+    out = OUT_DIR / ("RESULTS.md" if args.size == 32
+                     else f"RESULTS_{args.size}.md")
+    out.write_text(
         "# Detector comparison on real WM-811K data\n\n"
-        f"Held-out test split: {len(yt):,} real wafer maps, "
-        "identical input for both detectors.\n\n" + "\n".join(sections),
-        encoding="utf-8")
-    print(f"wrote {OUT}")
+        f"Held-out test split: {len(yt):,} real wafer maps at "
+        f"{args.size}x{args.size}, identical input for both detectors.\n\n"
+        + "\n".join(sections), encoding="utf-8")
+    print(f"wrote {out}")
 
 
 if __name__ == "__main__":
