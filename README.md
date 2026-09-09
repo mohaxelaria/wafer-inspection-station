@@ -8,7 +8,7 @@ The point of the project is the part that is hard to show on a CV: not a model
 in a notebook, but a model inside a running machine, with an operator screen in
 front of it and a database behind it.
 
-![status](https://img.shields.io/badge/milestone-2%20of%204-blue) ![macro F1](https://img.shields.io/badge/WM--811K%20macro%20F1-0.873-brightgreen)
+![status](https://img.shields.io/badge/milestone-2%20of%204-blue) ![macro F1](https://img.shields.io/badge/WM--811K%20macro%20F1-0.877-brightgreen)
 
 ![Operator console](docs/console.png)
 
@@ -126,7 +126,8 @@ with identical input. Full per-class tables in [ml/RESULTS.md](ml/RESULTS.md).
 |---|---:|---:|
 | Heuristic, on **simulated** wafers | 0.977 | - |
 | Heuristic, on **real** WM-811K | 0.476 | 0.235 |
-| CNN trained on WM-811K | **0.923** | **0.873** |
+| CNN, 32x32 input | 0.923 | 0.873 |
+| CNN, 64x64 input | **0.933** | **0.877** |
 
 The first two rows are the same code. Hand-written radial features score 97.7%
 on the clean parametric patterns my simulator draws and 47.6% on real wafers -
@@ -149,6 +150,46 @@ Both are consistent with the preprocessing rather than the model: a scratch is
 often one or two dies wide, and nearest-neighbour downsampling to 32x32 breaks
 a thin line into disconnected dots. Raising the input resolution is the next
 experiment, not a bigger network.
+
+### Experiment: was the `scratch` failure caused by preprocessing?
+
+The 32x32 model's worst class was `scratch` (F1 0.70). Hypothesis: a scratch is
+often one or two dies wide, and nearest-neighbour downsampling to 32x32 breaks a
+thin line into disconnected dots - so the evidence is destroyed *before* the
+model sees it. If that is true, raising the input resolution should help the
+thin and small defects specifically, and leave the large ones alone.
+
+Same architecture, same data, same 20 epochs - only the input resolution changed:
+
+| class | 32x32 F1 | 64x64 F1 | change | n |
+|---|---:|---:|---:|---:|
+| **scratch** | 0.697 | **0.828** | **+0.131** | 180 |
+| loc | 0.802 | 0.826 | +0.024 | 540 |
+| none | 0.951 | 0.965 | +0.014 | 3000 |
+| edge_loc | 0.861 | 0.865 | +0.004 | 779 |
+| edge_ring | 0.973 | 0.975 | +0.002 | 1452 |
+| random | 0.883 | 0.875 | -0.008 | 131 |
+| center | 0.940 | 0.920 | -0.020 | 645 |
+| donut | 0.893 | 0.854 | -0.039 | 84 |
+| near_full | 0.857 | 0.784 | -0.073 | 23 |
+| **overall** | 0.923 acc / 0.873 macro F1 | **0.933 acc / 0.877 macro F1** | | 6834 |
+
+**The hypothesis holds for the class it was about.** `scratch` gains 13 points -
+by far the largest move in the table - and `loc`, the other small-and-thin
+class, gains as well. The large-area classes (`edge_ring`, `none`, `center`)
+barely move, which is what should happen if resolution only mattered for thin
+features.
+
+**But the headline metric hides it.** Macro F1 rises only 0.873 -> 0.877,
+because the gain on `scratch` is cancelled by losses on `near_full` (n=23) and
+`donut` (n=84). With 23 test wafers, one wafer moves that class's F1 by about
+four points, so those two deltas are inside the noise of a single run - they are
+not evidence that 64x64 hurts those classes. Confirming that properly needs
+several seeds per configuration, which is the honest next step rather than a
+conclusion I can draw from one run.
+
+The 64x64 model is the one the machine now loads, since `load_detector()` picks
+the checkpoint with the best validation macro F1.
 
 **Metric note.** 66% of the labelled wafers in this dataset are `none`, so a
 model that predicts `none` for everything already scores about 0.66 accuracy.
