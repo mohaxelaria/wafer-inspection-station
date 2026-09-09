@@ -17,6 +17,7 @@ model that mostly predicts "none".
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 
 import numpy as np
@@ -25,7 +26,11 @@ import pandas as pd
 from .labels import CLASSES, FROM_WM811K, INDEX
 
 ROOT = Path(__file__).resolve().parent.parent
-RAW = ROOT / "data" / "LSWMD.pkl"
+
+# Datasets and caches can live outside the repo - they are large and belong on
+# whichever drive has room:  set WIS_DATA_DIR=D:\\wafer-data
+DATA_DIR = Path(os.environ.get("WIS_DATA_DIR", ROOT / "data"))
+RAW = DATA_DIR / "LSWMD.pkl"
 
 
 def _unwrap(value):
@@ -99,7 +104,8 @@ def build_cache(size: int = 32, max_per_class: int = 20000,
     for k, v in splits.items():
         print(f"  {k:<6} {len(v):>7,}")
 
-    out = ROOT / "data" / f"wm811k_{size}.npz"
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    out = DATA_DIR / f"wm811k_{size}.npz"
     np.savez_compressed(out, X=X, y=y, classes=np.array(CLASSES),
                         **{f"idx_{k}": v for k, v in splits.items()})
     print(f"wrote {out}")
@@ -107,7 +113,7 @@ def build_cache(size: int = 32, max_per_class: int = 20000,
 
 
 def load_cache(size: int = 32):
-    path = ROOT / "data" / f"wm811k_{size}.npz"
+    path = DATA_DIR / f"wm811k_{size}.npz"
     if not path.exists():
         raise SystemExit(f"{path} not found - run: python -m ml.data --size {size}")
     z = np.load(path, allow_pickle=False)

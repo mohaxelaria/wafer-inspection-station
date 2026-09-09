@@ -162,6 +162,14 @@ python -m ml.train --epochs 20                       # writes ml/checkpoints/waf
 python -m ml.evaluate                                # heuristic vs CNN -> ml/RESULTS.md
 ```
 
+The dataset and its caches are large (2.1 GB + ~470 MB) and do not have to sit
+inside the repo. Point `WIS_DATA_DIR` anywhere:
+
+```bash
+set WIS_DATA_DIR=D:\wafer-data          # Windows
+export WIS_DATA_DIR=/data/wafer         # Linux/macOS
+```
+
 Restart the server and the console header switches from `heuristic-v1` to the
 CNN automatically - `backend/detector_cnn.py` loads the checkpoint if it
 exists and falls back to the heuristic if it does not.

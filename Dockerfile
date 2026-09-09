@@ -1,8 +1,8 @@
 # Two images from one file.
 #
 #   target "base" -> the web tier: FastAPI, the console, no ML stack at all.
-#   target "tool" -> the equipment tier: adds CPU PyTorch and the checkpoint,
-#                    because only this process runs the classifier.
+#   target "tool" -> the equipment tier: adds NumPy, CPU PyTorch and the
+#                    checkpoint, because only this process runs the classifier.
 #
 # Splitting them keeps the web image small and means scaling the web tier does
 # not multiply a 1.5 GB PyTorch image.
@@ -28,8 +28,13 @@ CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 FROM base AS tool
 
+# NumPy is a hard requirement of the detector. torch does NOT pull it in, and
+# without it CNNDetector cannot build its input tensor - the first build of this
+# image fell back to the heuristic for exactly that reason.
+RUN pip install --no-cache-dir "numpy>=1.26"
+
 # CPU wheels only - this container classifies a handful of wafers per minute,
-# so a GPU image would be several gigabytes for no benefit.
+# so a CUDA image would be several gigabytes for no benefit.
 RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 
 COPY ml/checkpoints ./ml/checkpoints

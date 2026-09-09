@@ -88,5 +88,8 @@ def load_detector() -> Detector:
             return det
         print("[detector] no checkpoint yet; using the heuristic")
     except Exception as exc:
-        print(f"[detector] CNN unavailable ({exc}); using the heuristic")
+        # Loud on purpose: falling back is safe, but running the heuristic while
+        # believing the CNN is live would quietly invalidate every result.
+        print(f"[detector] WARNING: CNN unavailable ({exc}) - falling back to "
+              f"the heuristic; every prediction below will be worse")
     return HeuristicDetector()
