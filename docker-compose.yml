@@ -1,0 +1,72 @@
+# Full stack: PostgreSQL, Redis, the equipment process, and the web tier.
+#
+#   docker compose up --build
+#   open http://localhost:8000
+#
+# The machine lives in "tool" and nowhere else; "web" holds no machine state,
+# which is what makes it replaceable and scalable.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-wis}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-wis}
+      POSTGRES_DB: ${POSTGRES_DB:-wis}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-wis} -d ${POSTGRES_DB:-wis}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  tool:
+    build:
+      context: .
+      target: tool
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-wis}:${POSTGRES_PASSWORD:-wis}@postgres:5432/${POSTGRES_DB:-wis}
+      REDIS_URL: redis://redis:6379/0
+      AUTOSTART: ${AUTOSTART:-1}
+      AUTOSTART_WAFERS: ${AUTOSTART_WAFERS:-25}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      target: base
+    ports:
+      - "${WEB_PORT:-8000}:8000"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-wis}:${POSTGRES_PASSWORD:-wis}@postgres:5432/${POSTGRES_DB:-wis}
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request;urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  pgdata:

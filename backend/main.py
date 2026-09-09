@@ -1,58 +1,47 @@
-"""FastAPI host process: machine control, result storage, live telemetry.
+"""Web tier: operator console, control API, live telemetry.
 
-Run with:  uvicorn backend.main:app --reload
-Then open: http://127.0.0.1:8000
+Runs in two shapes, chosen by whether REDIS_URL is set:
+
+* **standalone** (no REDIS_URL) - this process also owns the machine. One
+  command, no services: `uvicorn backend.main:app --reload`.
+* **distributed** (REDIS_URL set) - the machine lives in `backend.tool_service`;
+  this process only subscribes to Redis, serves the UI and forwards commands.
+  Holding no machine state is what allows several replicas of this container.
+
+    docker compose up --build
 """
 from __future__ import annotations
 
 import asyncio
 import json
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from .db import Store
-from .detector_cnn import load_detector
-from .machine import InspectionMachine
+from .bus import make_bus
+from .db import make_store
+from .runtime import MachineRunner, persist
 
 FRONTEND = Path(__file__).resolve().parent.parent / "frontend"
 
-store = Store()
-events: asyncio.Queue[dict] = asyncio.Queue(maxsize=2000)
+bus = make_bus()
+store = make_store()
+DISTRIBUTED = os.environ.get("REDIS_URL") is not None
+
+# In standalone mode this process owns the machine; in distributed mode the
+# tool container does, and `runner` stays None.
+runner: MachineRunner | None = None
 clients: set[WebSocket] = set()
 
 
-def _emit(evt: dict) -> None:
-    """Called by the machine on every tick. Must never block the loop."""
-    try:
-        events.put_nowait(evt)
-    except asyncio.QueueFull:
-        pass                       # telemetry is disposable; results are not
-
-
-machine = InspectionMachine(detector=load_detector(), emit=_emit)
-
-
-async def _broadcaster() -> None:
-    while True:
-        evt = await events.get()
-
-        # Durable side effects before the event reaches any screen.
-        try:
-            if evt["type"] == "lot_loaded":
-                store.add_lot(evt["lot_id"], evt["wafer_count"])
-            elif evt["type"] == "wafer_done":
-                store.add_wafer(evt)
-            elif evt["type"] == "lot_done":
-                store.finish_lot(evt["lot_id"])
-            elif evt["type"] == "alarm":
-                store.add_alarm(evt)
-        except Exception as exc:
-            print(f"[store] {exc}")
-
+async def _fan_out() -> None:
+    """Forward bus events to every connected browser."""
+    async for evt in bus.events():
+        if DISTRIBUTED:
+            persist(store, evt)      # standalone persists inside the runner
         if not clients:
             continue
         payload = json.dumps(evt)
@@ -65,14 +54,25 @@ async def _broadcaster() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    tasks = [asyncio.create_task(machine.run()),
-             asyncio.create_task(_broadcaster())]
+    global runner
+    coros = [_fan_out()]
+    if not DISTRIBUTED:
+        runner = MachineRunner(bus, store, persist_results=True)
+        coros += runner.tasks()
+        detector = runner.machine.detector.name
+    else:
+        detector = "in the tool service"
+    print(f"[web] mode={'distributed' if DISTRIBUTED else 'standalone'}  "
+          f"bus={bus.name}  store={store.backend}  detector={detector}")
+
+    tasks = [asyncio.create_task(c) for c in coros]
     yield
     for t in tasks:
         t.cancel()
+    await bus.close()
 
 
-app = FastAPI(title="Wafer Inspection Station", version="0.1.0",
+app = FastAPI(title="Wafer Inspection Station", version="0.3.0",
               lifespan=lifespan)
 
 
@@ -80,27 +80,28 @@ app = FastAPI(title="Wafer Inspection Station", version="0.1.0",
 
 @app.post("/api/command/{name}")
 async def command(name: str, wafers: int = 5, grid: int = 26):
-    try:
-        if name == "load":
-            return {"lot_id": machine.load_lot(wafer_count=wafers, grid=grid)}
-        if name == "start":
-            machine.start()
-        elif name == "pause":
-            machine.pause()
-        elif name == "abort":
-            machine.abort()
-        elif name == "clear":
-            machine.clear_alarms()
-        else:
-            raise HTTPException(404, f"unknown command: {name}")
-    except RuntimeError as exc:
-        raise HTTPException(409, str(exc))
-    return {"ok": True, "state": machine.state.value}
+    if name not in {"load", "start", "pause", "abort", "clear"}:
+        raise HTTPException(404, f"unknown command: {name}")
+    params = {"wafers": wafers, "grid": grid}
+
+    if runner is not None:                     # standalone: act directly
+        try:
+            return runner.dispatch(name, params)
+        except RuntimeError as exc:
+            raise HTTPException(409, str(exc))
+
+    await bus.send_command({"name": name, "params": params})
+    return {"accepted": True, "name": name}    # the tool applies it
 
 
 @app.get("/api/state")
 async def state():
-    return machine.snapshot()
+    if runner is not None:
+        return runner.machine.snapshot()
+    snapshot = await bus.get_state()
+    if snapshot is None:
+        raise HTTPException(503, "no machine state yet - is the tool running?")
+    return snapshot
 
 
 # ---------------------------------------------------------------- results API
@@ -122,8 +123,10 @@ async def detector_metrics():
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "state": machine.state.value,
-            "detector": machine.detector.name}
+    detector = runner.machine.detector.name if runner else "tool-service"
+    return {"status": "ok",
+            "mode": "distributed" if DISTRIBUTED else "standalone",
+            "bus": bus.name, "store": store.backend, "detector": detector}
 
 
 # ------------------------------------------------------------------ websocket
@@ -133,9 +136,12 @@ async def ws_endpoint(ws: WebSocket):
     await ws.accept()
     clients.add(ws)
     try:
-        await ws.send_text(json.dumps({"type": "snapshot", **machine.snapshot()}))
+        snapshot = (runner.machine.snapshot() if runner
+                    else await bus.get_state())
+        if snapshot:
+            await ws.send_text(json.dumps({"type": "snapshot", **snapshot}))
         while True:
-            await ws.receive_text()          # client keepalive only
+            await ws.receive_text()            # client keepalive only
     except WebSocketDisconnect:
         pass
     finally:

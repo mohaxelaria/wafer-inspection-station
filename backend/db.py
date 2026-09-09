@@ -50,6 +50,8 @@ CREATE INDEX IF NOT EXISTS idx_wafers_lot ON wafers(lot_id);
 
 
 class Store:
+    backend = "sqlite"
+
     def __init__(self, path: Path = DB_PATH):
         path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
@@ -126,3 +128,16 @@ class Store:
                 " GROUP BY l.lot_id ORDER BY l.started_at DESC LIMIT ?",
                 (limit,)).fetchall()
         return [dict(r) for r in rows]
+
+
+def make_store():
+    """PostgreSQL when DATABASE_URL is set, SQLite otherwise.
+
+    Both classes expose the same methods, so the machine and the API never
+    learn which one they are talking to.
+    """
+    dsn = os.environ.get("DATABASE_URL")
+    if dsn:
+        from .db_postgres import PostgresStore
+        return PostgresStore(dsn)
+    return Store()

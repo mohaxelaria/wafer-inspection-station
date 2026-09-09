@@ -1,0 +1,3 @@
+# Milestone 3: PostgreSQL + Redis. Not needed to run the app standalone.
+redis>=5.0
+psycopg[binary]>=3.1

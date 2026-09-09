@@ -8,7 +8,7 @@ The point of the project is the part that is hard to show on a CV: not a model
 in a notebook, but a model inside a running machine, with an operator screen in
 front of it and a database behind it.
 
-![status](https://img.shields.io/badge/milestone-2%20of%204-blue) ![macro F1](https://img.shields.io/badge/WM--811K%20macro%20F1-0.877-brightgreen)
+![status](https://img.shields.io/badge/milestone-3%20of%204-blue) ![macro F1](https://img.shields.io/badge/WM--811K%20macro%20F1-0.877-brightgreen)
 
 ![Operator console](docs/console.png)
 
@@ -32,22 +32,47 @@ simulator's ground truth.*
 
 ## Architecture
 
+The system runs in two shapes from the same code. Which one starts is decided
+by a single environment variable, `REDIS_URL`.
+
+**Standalone** - one process, no services. What you use while developing:
+
 ```
-  machine.py            main.py                     index.html
- +------------+      +-------------------+        +----------------+
- | simulated  | ---> | FastAPI           | --WS-> | Vue 3 operator |
- | inspection |      |  - control API    |        | console        |
- | tool 10Hz  | <--- |  - event fan-out  | <-REST-|                |
- +------------+      +---------+---------+        +----------------+
-       |                       |
-       v                       v
-  detector.py              db.py (SQL)
-  ADC classifier           lots / wafers / alarms
+ machine.py -> main.py (FastAPI) -> index.html
+      |            |
+ detector.py    db.py (SQLite file)
 ```
 
-Every layer talks through a narrow interface, so each one can be replaced
-independently: the heuristic detector for a trained CNN, SQLite for PostgreSQL,
-the simulator for a real tool.
+**Distributed** - `docker compose up`, and the shape a real installation has:
+
+```
+                    +-------------------+
+                    |  tool container   |   owns the machine, runs the CNN
+                    |  tool_service.py  |
+                    +---------+---------+
+                 events |     |     | results
+                        v     |     v
+      +-------------+  pub/sub|  +--------------+
+      |    Redis    |<--------+  |  PostgreSQL  |
+      +------+------+            +-------+------+
+             | subscribe                 | queries
+             v                           v
+        +----------------------------------+
+        |  web container(s)  main.py       |  --> browser
+        +----------------------------------+
+```
+
+The split is not decoration. A real inspection tool is **one** machine: two
+processes cannot both drive the stage. So the equipment side stays a single
+instance, while the web tier holds no machine state at all and can therefore
+run as several replicas behind a load balancer. Redis carries events one way
+and operator commands the other; PostgreSQL holds the results both tiers agree
+on.
+
+Every layer sits behind a narrow interface, so each can be replaced on its own:
+the heuristic detector for the CNN (done in milestone 2), SQLite for
+PostgreSQL, the in-process bus for Redis, and - the point of the exercise - the
+simulator for a real tool.
 
 ## Run it
 
@@ -67,6 +92,36 @@ uvicorn backend.main:app --reload
 ```
 
 Open <http://127.0.0.1:8000>, press **Start**.
+
+### Or the full stack, in containers
+
+```bash
+docker compose up --build
+```
+
+That starts four services - PostgreSQL, Redis, the equipment process and the
+web tier - and the tool loads a 25-wafer lot and begins scanning by itself, so
+<http://localhost:8000> is already moving when you open it.
+
+```bash
+docker compose ps          # health of each service
+docker compose logs -f tool
+docker compose down -v     # stop and delete the database volume
+```
+
+`GET /api/health` reports which shape is running:
+
+```json
+{"status":"ok","mode":"distributed","bus":"redis",
+ "store":"postgresql","detector":"tool-service"}
+```
+
+Two images are built from one Dockerfile: the web image carries no ML stack at
+all, and only the tool image installs CPU PyTorch and the checkpoint - so
+scaling the web tier does not multiply a 1.5 GB image. Scaling it for real
+(`--scale web=3`) also needs the fixed host port replaced by a proxy; the
+services themselves are already stateless.
+
 
 If the project sits on a network or shared drive where SQLite cannot lock
 files, point the database somewhere local: `set WIS_DB_PATH=C:\temp\inspection.db`.
@@ -201,18 +256,23 @@ Every number here is reported with macro F1 beside it for that reason.
 |---|---|
 | 1 - done | Simulator, FastAPI + WebSocket, Vue console, SQLite store, heuristic ADC |
 | **2 - done** | CNN trained on the real WM-811K dataset behind the same `Detector` interface; heuristic vs CNN on real data |
-| 3 | PostgreSQL + Redis, Docker Compose, one-command startup |
+| **3 - done** | PostgreSQL + Redis, split tool/web services, Docker Compose |
 | 4 | SECS/GEM equipment interface (SEMI E5/E30) and SPC control charts with Western Electric rules |
 
 ## Layout
 
 ```
 backend/
-  wafer.py      wafer geometry, WM-811K-style defect pattern generation
-  machine.py    the simulated tool: states, telemetry, faults, scan loop
-  detector.py   Detector interface + heuristic baseline classifier
-  db.py         SQL result store
-  main.py       FastAPI app: control API, WebSocket fan-out, static hosting
+  wafer.py         wafer geometry, WM-811K-style defect pattern generation
+  machine.py       the simulated tool: states, telemetry, faults, scan loop
+  detector.py      Detector interface + heuristic baseline classifier
+  detector_cnn.py  the trained model, and checkpoint auto-selection
+  bus.py           event/command bus: in-process or Redis
+  runtime.py       wiring shared by both entry points
+  tool_service.py  equipment-side process (owns the machine)
+  db.py            SQLite store + factory
+  db_postgres.py   PostgreSQL store, same interface
+  main.py          FastAPI app: control API, WebSocket fan-out, static hosting
 frontend/
   index.html    Vue 3 operator console (canvas wafer map + charts)
 scripts/
