@@ -10,6 +10,12 @@ front of it and a database behind it.
 
 ![status](https://img.shields.io/badge/milestone-2%20of%204-blue) ![macro F1](https://img.shields.io/badge/WM--811K%20macro%20F1-0.873-brightgreen)
 
+![Operator console](docs/console.png)
+
+*The operator console mid-scan: an edge-ring defect filling in die by die, live
+throughput, and each finished wafer classified by the CNN against the
+simulator's ground truth.*
+
 ## What it does
 
 - **Simulated tool** - a cassette of wafers, a stage that walks every die,
