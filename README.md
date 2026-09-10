@@ -1,8 +1,10 @@
-# Wafer Inspection Station
+<img src="docs/binmap-lockup.png" alt="BinMap" width="330">
+
+# Wafer bin map defect classification
 
 A working simulation of a semiconductor **optical inspection tool** and the
 operator software that drives it: machine control, 10 Hz telemetry, live wafer
-mapping, automatic defect-pattern classification, alarms and result storage.
+mapping, automatic defect classification (ADC), alarms and result storage.
 
 The point of the project is the part that is hard to show on a CV: not a model
 in a notebook, but a model inside a running machine, with an operator screen in
@@ -12,9 +14,9 @@ front of it and a database behind it.
 
 ![Operator console](docs/console.png)
 
-*The operator console mid-scan: an edge-ring defect filling in die by die, live
-throughput, and each finished wafer classified by the CNN against the
-simulator's ground truth.*
+*The BinMap operator console mid-scan: failing dies appearing one by one, live
+throughput, and every finished wafer classified by the CNN and scored against
+the simulator's ground truth.*
 
 ## What it does
 
@@ -253,6 +255,21 @@ conclusion I can draw from one run.
 
 The 64x64 model is the one the machine now loads, since `load_detector()` picks
 the checkpoint with the best validation macro F1.
+
+### What the data actually looks like
+
+![WM-811K wafer maps](docs/wm811k_samples.png)
+
+*Real WM-811K test wafers, six per class. A wafer map is not a photograph:
+every cell is one die, marked pass or fail by electrical test.*
+
+Two things are visible here that the numbers only imply. `scratch` really is a
+line one or two dies wide, which is why downsampling costs so much. And the
+labels are not clean - some `loc` maps are indistinguishable from `none`, so
+part of the remaining error is disagreement in the ground truth rather than
+model error.
+
+Regenerate it with `python -m scripts.plot_wafers --size 32 --per-class 6`.
 
 **Metric note.** 66% of the labelled wafers in this dataset are `none`, so a
 model that predicts `none` for everything already scores about 0.66 accuracy.

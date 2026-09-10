@@ -72,7 +72,8 @@ async def lifespan(app: FastAPI):
     await bus.close()
 
 
-app = FastAPI(title="Wafer Inspection Station", version="0.3.0",
+app = FastAPI(title="BinMap - wafer bin map defect classification",
+              version="0.3.0",
               lifespan=lifespan)
 
 

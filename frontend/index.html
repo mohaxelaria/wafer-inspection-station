@@ -3,8 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SP-Sim Inspection Station - Operator Console</title>
-<link rel="icon" href="data:,">
+<title>BinMap - Operator Console</title>
+<link rel="icon" type="image/png" sizes="32x32" href="./assets/favicon-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="./assets/favicon-180.png">
 <style>
 :root {
   color-scheme: dark;
@@ -31,11 +32,12 @@ body {
   font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 header {
-  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
   padding: 14px 20px; background: var(--surface);
   border-bottom: 1px solid var(--border);
 }
-h1 { font-size: 15px; margin: 0; font-weight: 650; letter-spacing: .2px; }
+h1 { font-size: 17px; margin: 0; font-weight: 700; letter-spacing: -.2px; }
+.logo { display: block; width: 34px; height: 34px; flex: none; }
 .sub { color: var(--muted); font-size: 12px; }
 .spacer { flex: 1; }
 .pill {
@@ -123,9 +125,11 @@ td.num, th.num { text-align: right; }
 <body>
 <div id="app">
   <header>
+    <img class="logo" src="./assets/binmap-mark.png" alt="" width="34" height="34">
     <div>
-      <h1>SP-Sim Optical Inspection Station</h1>
-      <div class="sub">Simulated tool &middot; detector: {{ detector }}</div>
+      <h1>BinMap</h1>
+      <div class="sub">Wafer bin map defect classification &middot;
+        detector: {{ detector }}</div>
     </div>
     <div class="pill" :class="telemetry.state">{{ telemetry.state }}</div>
     <div class="sub" v-if="telemetry.lot_id">
